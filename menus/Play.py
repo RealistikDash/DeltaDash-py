@@ -9,6 +9,48 @@ from menus.overlays.pNotification import *
 import pygame
 import time
 
+from typing import Optional, Type
+class CursedList:
+    """A way of not creating all of the objects instantly, and lazy load them
+    as we use them. Draws on creation."""
+
+    def __init__(self, creation_args: list[tuple], cls: Type, headway: int = 10) -> None:
+        self.creation_args = creation_args
+        self.idx = 0
+        self.creation_class: Type = cls
+        self.count = len(creation_args)
+        self.cur_available = []
+
+        for _ in range(headway):
+            self._create_next_available()
+    
+    def _create_next_available(self):
+        if not self.creation_args: return
+        s = self.creation_class(*self.creation_args[0])
+        self.creation_args.pop(0)
+        self.cur_available.append(s)
+        s.Sprite.draw()
+    
+    def next(self):
+        """Moves onto the next created arg."""
+
+        self.cur_available.pop(0)
+        self.idx += 1
+        self._create_next_available()
+
+    @property
+    def current_item(self):
+        if not self.finished:
+            return self.cur_available[0]
+
+    def __len__(self) -> int:
+        return self.count
+    
+    @property
+    def finished(self) -> bool:
+        """Whether we have finished iterating over the list."""
+
+        return self.count == self.idx + 1
 
 class Gameplay:
     def __init__(self):
@@ -43,8 +85,8 @@ class Gameplay:
 
         self.ClosingTime = 0
 
-        self.upperSprites = []
-        self.lowerSprites = []
+        self.upperSprites: Optional[CursedList] = None
+        self.lowerSprites: Optional[CursedList] = None
 
 
         self.ScoreIndicator = None
@@ -71,7 +113,7 @@ class Gameplay:
             file = f.read()
             data = data = file.split("\n")[0].split("|")
             self.fileBody = file.split("\n")[1:]
-            if len(self.fileBody) == 0: #Empty map will generate bugs within the menu
+            if not self.fileBody: #Empty map will generate bugs within the menu
                 glob.MenuManager.ChangeMenu(type=Menus.SongSelection)
                 NotificationMassive(text="Beatmap is empty", duration=5000, type=NotificationType.Error).show()
                 return
@@ -84,7 +126,6 @@ class Gameplay:
         self.od = 1/(1+float(data[3])/3)*200
 
 
-        glob.Framerate = 30
         glob.backgroundSprites.sprites[0].FadeTo(0.1, 400)
 
         accBar = pSprite(glob.PixelWhite, vector2(0,0), SkinSource.local, Positions.centre, Positions.centre, Color(0, 246, 226))
@@ -143,7 +184,7 @@ class Gameplay:
 
 
 
-        self.upperSprites.sort(key=lambda x: x.time) # Rearrange sprites to be sure it will be handled in the right order
+        #self.upperSprites.sort(key=lambda x: x.time) # Rearrange sprites to be sure it will be handled in the right order
 
 
         self.comboIndicator = pText("0x", 100, FontStyle.regular, vector2(0,0), Positions.centre, Positions.centre)
@@ -236,26 +277,31 @@ class Gameplay:
             return #let's not try weird stuff
         workToDo = len(self.fileBody)
         workDone = 0
+        up_note_args = []
+        down_note_args = []
         for note in self.fileBody:
             note = note.split("|")
             # Fun fact about note loading, it was SO LONG before because it was actually re-rendering every sprite,
             # at start, i just though it was python slowness, but then i realised, game was taking like... 9 Go of Ram for a 3 min song
             # So i just modified this for it to take the pre-loaded sprite as base, so it will just contain 2 "really" loaded sprite in ram, the rest of the pSprite are just references, way more optimized
             if int(note[1]) == 1:
-                self.upperSprites.append(pNote(int(note[0]), NotePos.Upper, self.ar, self.UpperSprite))
+                up_note_args.append((int(note[0]), NotePos.Upper, self.ar, self.UpperSprite))
             else:
-                self.lowerSprites.append(pNote(int(note[0]), NotePos.Lower, self.ar, self.LowerSprite))
+                down_note_args.append((int(note[0]), NotePos.Lower, self.ar, self.LowerSprite))
             workDone += 1
             self.lifeBar.VectorScale(vector2(((workDone/workToDo)*100) * 19.2, 5))
+        
+        self.upperSprites = CursedList(up_note_args, pNote, 10)
+        self.lowerSprites = CursedList(down_note_args, pNote, 10)
 
-        lastElement = max([max(sprite.time for sprite in self.upperSprites), max(sprite.time for sprite in self.lowerSprites)]) #Get the last element by getting the maximum values of those two list of elements
+        lastElement = max(up_note_args[-1][0], down_note_args[-1][0]) #Get the last element by getting the maximum values of those two list of elements
         self.ClosingTime = lastElement+ self.od*3
 
         self.Loading.ClearTransformations()
         self.Loading.FadeTo(0,200)
         glob.Scheduler.AddDelayed(200, glob.foregroundSprites.remove, sprite=self.Loading)
         self.isLoading = False
-        if self.upperSprites[0].time < 3000 or self.lowerSprites[0].time < 3000:
+        if self.upperSprites.current_item.time < 3000 or self.lowerSprites.current_item.time < 3000:
             glob.Scheduler.AddDelayed(3000, glob.AudioManager.Unpause, notif=False)
             NotificationMassive("Starting in 3", 1000, NotificationType.Error).show()
             glob.Scheduler.AddDelayed(1000, NotificationMassive("Starting in 2", 1000, NotificationType.Warning).show)
@@ -368,9 +414,9 @@ class Gameplay:
 
     def handleKey1(self):
         """Called when circle must be hit.. or not"""
-        if len(self.upperSprites) > 0:
+        if self.upperSprites is not None and len(self.upperSprites):
 
-            spriteToHandle = self.upperSprites[0]
+            spriteToHandle = self.upperSprites.current_item
             delay = spriteToHandle.time - pygame.mixer.music.get_pos()
 
 
@@ -384,7 +430,7 @@ class Gameplay:
             self.unstableRate.append(delay)
             glob.AudioManager.play(self.hitSound)
             spriteToHandle.Hit()
-            self.upperSprites.pop(0)
+            self.upperSprites.next()
             self.combo += 1
 
 
@@ -411,9 +457,9 @@ class Gameplay:
 
     def handleKey2(self):
         """Called when circle must be hit.. or not"""
-        if len(self.lowerSprites) > 0:
+        if self.lowerSprites is not None and  len(self.lowerSprites):
 
-            spriteToHandle = self.lowerSprites[0]
+            spriteToHandle = self.lowerSprites.current_item
             delay = spriteToHandle.time - pygame.mixer.music.get_pos()
 
 
@@ -428,7 +474,7 @@ class Gameplay:
             self.unstableRate.append(delay)
             glob.AudioManager.play(self.hitSound)
             spriteToHandle.Hit()
-            self.lowerSprites.pop(0)
+            self.lowerSprites.next()
             self.combo += 1
 
             if abs(delay) > int(self.od)*3:
@@ -494,40 +540,41 @@ class Gameplay:
     @property
     def isPausing(self):
         try:
-            return not (self.upperSprites[0].time - pygame.mixer.music.get_pos() < 3000 or self.lowerSprites[0].time - pygame.mixer.music.get_pos() < 3000)
+            return not (self.upperSprites.current_item.time - pygame.mixer.music.get_pos() < 3000 or self.lowerSprites.current_item.time - pygame.mixer.music.get_pos() < 3000)
         except:
             return False
 
 
     def update(self):
-        currentWidth = (pygame.mixer.music.get_pos() / glob.AudioManager.currentSong["length"]) * glob.windowManager.widthScaled
+        mixer_pos = pygame.mixer.music.get_pos()
+        currentWidth = (mixer_pos / glob.AudioManager.currentSong["length"]) * glob.windowManager.widthScaled
         self.progressBar.VectorScale(vector2(currentWidth, 5))
-        seconds = str(int((pygame.mixer.music.get_pos() / 1000) % 60))
+        seconds = str(int((mixer_pos / 1000) % 60))
         if len(seconds) == 1:
             seconds = "0" + seconds
-        minutes = str(int((pygame.mixer.music.get_pos() / 1000 / 60) % 60))
+        minutes = str(int((mixer_pos / 1000 / 60) % 60))
         self.LengthTime.Text("{}:{}".format(minutes, seconds))
         self.accBar.Fade(helper.getSyncValue(0.8,0.5, EaseTypes.easeOut))
         self.updateLife()
         #handle missed notes
-        if len(self.upperSprites) > 0 and self.upperSprites[0].time - pygame.mixer.music.get_pos() < 0-self.od*3 and pygame.mixer.music.get_pos()>30: #Assuming there is no note in the first 30 miliseconds
+        if self.upperSprites is not None and len(self.upperSprites) and self.upperSprites.current_item.time - mixer_pos < 0-self.od*3 and mixer_pos>30: #Assuming there is no note in the first 30 miliseconds
             # Handle Missed Notes
-            self.upperSprites[0].Miss()
+            self.upperSprites.current_item.Miss()
             self.life -= self.hp
-            self.upperSprites.pop(0)
+            self.upperSprites.next()
             self.combo = 0
             self.updateCombo(0)
             self.accList.append(0)
 
-        if len(self.lowerSprites) > 0 and self.lowerSprites[0].time - pygame.mixer.music.get_pos() < 0-self.od*3 and pygame.mixer.music.get_pos()>30: #Assuming there is no note in the first 30 miliseconds
-            self.lowerSprites[0].Miss()
+        if self.lowerSprites is not None and len(self.lowerSprites) and self.lowerSprites.current_item.time - mixer_pos < 0-self.od*3 and mixer_pos>30: #Assuming there is no note in the first 30 miliseconds
+            self.lowerSprites.current_item.Miss()
             self.life -= self.hp
-            self.lowerSprites.pop(0)
+            self.lowerSprites.next()
             self.combo = 0
             self.updateCombo(0)
             self.accList.append(0)
 
-        if pygame.mixer.music.get_pos() >= self.ClosingTime and self.ClosingTime != 0 and not self.finished and not self.isLoading: #Avoid finish if song hasn't started
+        if mixer_pos >= self.ClosingTime and self.ClosingTime != 0 and not self.finished and not self.isLoading: #Avoid finish if song hasn't started
             self.Finish()
         if self.isPausing and not self.paused:
             self.paused = True

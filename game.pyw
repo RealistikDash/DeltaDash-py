@@ -119,10 +119,10 @@ if __name__ == "__main__": #avoid script to be runned in another script
                     timeSpike = True
                     fpsCounterBg.FadeTo(0.7,500)
                     fpsCounter.FadeTo(1, 500)
-            if timeSpike and time.time()*1000 - lastFpsSpike > 5000:
-                fpsCounter.FadeTo(0, 500)
-                fpsCounterBg.FadeTo(0, 500)
-                timeSpike = False
+            #if timeSpike and time.time()*1000 - lastFpsSpike > 5000:
+            #    fpsCounter.FadeTo(0, 500)
+            #    fpsCounterBg.FadeTo(0, 500)
+            #    timeSpike = False
 
             #Update frame behind background
             glob.surface.fill((0, 0, 0))
@@ -161,11 +161,7 @@ if __name__ == "__main__": #avoid script to be runned in another script
     except Exception as e:
         ErrorHandler.raiseError(e)
         pygame.quit()
-        if not glob.Debug:
-            ctypes.windll.user32.MessageBoxW(0, "Delta Dash encountered an Error and couldn't continue Working\n\n"+traceback.format_exc()+"\n\nSee logs for further informations", "Delta Dash - Crash", 0)
-        
-
-
+        ctypes.windll.user32.MessageBoxW(0, "Delta Dash encountered an Error and couldn't continue working\n\n"+traceback.format_exc()+"\n\nSee logs for further informations", "Delta Dash - Crash", 0)
 
     pygame.quit()
     sys.exit(0)
