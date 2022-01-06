@@ -20,6 +20,7 @@ from framework.graphics.pSprite import pSprite
 from framework.graphics.pText import pText
 from framework.serializers.config import Config
 from framework.audio.audioManager import AudioManager
+from framework.graphics import display
 from menus.menuManager import MenuManager
 from menus.overlays.volumeMeter import AudioMeter
 import traceback
@@ -89,9 +90,10 @@ if __name__ == "__main__": #avoid script to be runned in another script
     fpsCounterBg.Fade(0)
     fpsCounter = pText("", 25, FontStyle.thin, vector2(30,10), Positions.bottomRight, Positions.bottomRight)
     lastFpsSpike = time.time()*1000
-    timeSpike = False
+    timeSpike = True
     glob.overlaySprites.add(fpsCounterBg)
     glob.overlaySprites.add(fpsCounter)
+    max_fps = display.fetch_max_refreshrate()
 
     glob.Running = True
     glob.Logger.write("Initialised")
@@ -99,17 +101,19 @@ if __name__ == "__main__": #avoid script to be runned in another script
         while glob.Running: #Main Loop
 
             #fps tracking
-            glob.clock.tick(glob.Framerate)
+            glob.clock.tick(max_fps)
+
+            cur_fps = glob.clock.get_fps()
             if timeSpike:
 
-                if glob.clock.get_fps() >glob.Framerate-5:
+                if cur_fps >glob.Framerate-5:
                     fpsCounter.Color(Color(255,255,255))
-                elif glob.clock.get_fps() > glob.Framerate/2:
+                elif cur_fps > glob.Framerate/2:
                     fpsCounter.Color(Color(255, 123, 0))
                 else:
                     fpsCounter.Color(Color(255, 0, 0))
-                fpsCounter.Text("Framerate : {}/{}".format(int(glob.clock.get_fps()), glob.Framerate))
-            if glob.clock.get_fps() < glob.Framerate-5:
+                fpsCounter.Text(f"Framerate : {cur_fps:.0f}/{max_fps}")
+            if cur_fps < glob.Framerate-5:
                 lastFpsSpike = time.time() * 1000
                 if not timeSpike:
                     timeSpike = True
