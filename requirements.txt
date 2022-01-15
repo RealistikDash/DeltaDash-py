@@ -4,3 +4,4 @@ numpy==1.19.5
 mutagen==1.45.1
 easing-functions==1.0.4
 pywin32
+pyinstaller
